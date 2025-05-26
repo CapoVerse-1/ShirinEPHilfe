@@ -160,6 +160,42 @@ export default function Home() {
     ]
     
     const worksheet = XLSX.utils.aoa_to_sheet(exportData)
+    
+    // Add autofilter to the data range
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
+    worksheet['!autofilter'] = { ref: worksheet['!ref'] || 'A1' }
+    
+    // Set column widths for better readability
+    worksheet['!cols'] = [
+      { wch: 12 }, // Tag der Woche
+      { wch: 12 }, // Datum
+      { wch: 10 }, // Startzeit
+      { wch: 10 }, // Endzeit
+      { wch: 12 }, // Gesamtstunden
+      { wch: 20 }, // Point of Sales
+      { wch: 15 }, // Bezirk
+      { wch: 20 }, // Marktname
+      { wch: 15 }  // Coffee Advisor
+    ]
+    
+    // Style the Coffee Advisor column (column I) with yellow background
+    for (let row = 0; row <= processedData.length; row++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: 8 }) // Column I (index 8)
+      if (!worksheet[cellAddress]) worksheet[cellAddress] = { t: 's', v: '' }
+      
+      worksheet[cellAddress].s = {
+        fill: {
+          fgColor: { rgb: 'FFFF00' } // Yellow background
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } }
+        }
+      }
+    }
+    
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Promotions')
     
