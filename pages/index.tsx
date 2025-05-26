@@ -21,12 +21,12 @@ export default function Home() {
   const [status, setStatus] = useState<{ type: 'success' | 'error' | '', message: string }>({ type: '', message: '' })
 
   const getDayOfWeek = (date: Date): string => {
-    const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
+    const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
     return days[date.getDay()]
   }
 
   const getWorkingHours = (dayOfWeek: string): { start: string, end: string } => {
-    if (dayOfWeek === 'Sa' || dayOfWeek === 'So') {
+    if (dayOfWeek === 'Samstag' || dayOfWeek === 'Sonntag') {
       return { start: '09:00', end: '18:00' }
     }
     return { start: '09:30', end: '18:30' }
