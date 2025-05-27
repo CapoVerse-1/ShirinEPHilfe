@@ -32,8 +32,132 @@ export default function Home() {
     return { start: '09:30', end: '18:30' }
   }
 
+  const getMonthInfo = (monthAbbr: string, actualYear?: number): { monthNumber: number, year: number, monthName: string } => {
+    // Normalize the month abbreviation to handle case variations
+    const normalizedMonth = monthAbbr.charAt(0).toUpperCase() + monthAbbr.slice(1).toLowerCase()
+    
+    const germanMonths: { [key: string]: { number: number, name: string } } = {
+      'Jan': { number: 0, name: 'Januar' },
+      'Feb': { number: 1, name: 'Februar' },
+      'Mär': { number: 2, name: 'März' },
+      'Mar': { number: 2, name: 'März' }, // Alternative for März
+      'Apr': { number: 3, name: 'April' },
+      'Mai': { number: 4, name: 'Mai' },
+      'Jun': { number: 5, name: 'Juni' },
+      'Jul': { number: 6, name: 'Juli' },
+      'Aug': { number: 7, name: 'August' },
+      'Sep': { number: 8, name: 'September' },
+      'Okt': { number: 9, name: 'Oktober' },
+      'Oct': { number: 9, name: 'Oktober' }, // Alternative for Oktober
+      'Nov': { number: 10, name: 'November' },
+      'Dez': { number: 11, name: 'Dezember' },
+      'Dec': { number: 11, name: 'Dezember' } // Alternative for Dezember
+    }
+    
+    console.log('Looking for month:', normalizedMonth) // Debug log
+    const monthInfo = germanMonths[normalizedMonth]
+    if (!monthInfo) {
+      console.log('Available months:', Object.keys(germanMonths)) // Debug log
+      throw new Error(`Unknown month abbreviation: ${monthAbbr} (normalized: ${normalizedMonth})`)
+    }
+    
+    // Use the actual year from Excel data if provided, otherwise use current year
+    const year = actualYear || new Date().getFullYear()
+    
+    return {
+      monthNumber: monthInfo.number,
+      year: year,
+      monthName: monthInfo.name
+    }
+  }
+
+  const getDaysInMonth = (month: number, year: number): number => {
+    return new Date(year, month + 1, 0).getDate()
+  }
+
+  const excelDateToJSDate = (excelDate: number): Date => {
+    // Excel date serial number to JavaScript Date
+    // Excel counts from January 1, 1900, but has a leap year bug for 1900
+    // JavaScript Date counts from January 1, 1970
+    const excelEpoch = new Date(1899, 11, 30) // December 30, 1899
+    const jsDate = new Date(excelEpoch.getTime() + excelDate * 24 * 60 * 60 * 1000)
+    return jsDate
+  }
+
+  const extractMonthFromHeader = (data: any[][]): { monthAbbr: string, year: number } => {
+    // Look for month from the first date in the header row, starting from column E (index 4)
+    const headerRow = data[0]
+    if (!headerRow) throw new Error('No header row found')
+    
+    console.log('Header row:', headerRow) // Debug log
+    
+    for (let i = 4; i < headerRow.length; i++) {
+      const cellValue = headerRow[i]
+      console.log(`Column ${i} value:`, cellValue, typeof cellValue) // Debug log
+      
+      if (cellValue) {
+        // Check if it's a number (Excel date serial number)
+        if (typeof cellValue === 'number') {
+          try {
+            const jsDate = excelDateToJSDate(cellValue)
+            const month = jsDate.getMonth() // 0-11
+            const year = jsDate.getFullYear() // Get the actual year from Excel
+            
+            const monthAbbreviations = [
+              'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'
+            ]
+            
+            const monthAbbr = monthAbbreviations[month]
+            console.log('Converted Excel date', cellValue, 'to JS date:', jsDate, 'month:', monthAbbr, 'year:', year) // Debug log
+            return { monthAbbr, year }
+          } catch (error) {
+            console.log('Error converting Excel date:', error) // Debug log
+            continue
+          }
+        }
+        
+        // Fallback: try to parse as string (in case some Excel files have text dates)
+        const cellStr = String(cellValue).trim()
+        
+        // Try multiple patterns to extract month abbreviation
+        // Pattern 1: "01.Aug", "02.Aug", etc.
+        let match = cellStr.match(/\d{1,2}\.([A-Za-z]{3})/i)
+        if (match) {
+          console.log('Found month with pattern 1:', match[1]) // Debug log
+          return { monthAbbr: match[1], year: new Date().getFullYear() }
+        }
+        
+        // Pattern 2: "01Aug", "02Aug", etc. (without dot)
+        match = cellStr.match(/\d{1,2}([A-Za-z]{3})/i)
+        if (match) {
+          console.log('Found month with pattern 2:', match[1]) // Debug log
+          return { monthAbbr: match[1], year: new Date().getFullYear() }
+        }
+        
+        // Pattern 3: Just the month abbreviation "Aug", "Jul", etc.
+        match = cellStr.match(/^([A-Za-z]{3})$/i)
+        if (match) {
+          console.log('Found month with pattern 3:', match[1]) // Debug log
+          return { monthAbbr: match[1], year: new Date().getFullYear() }
+        }
+      }
+    }
+    
+    console.log('Could not find month in any column from E onwards') // Debug log
+    throw new Error('Could not detect month from Excel headers')
+  }
+
   const processExcelData = (data: any[][]) => {
     const result: PromotionData[] = []
+    
+    // Extract month and year from header row
+    const { monthAbbr, year: excelYear } = extractMonthFromHeader(data)
+    const currentYear = new Date().getFullYear() // Use current year (2025)
+    const { monthNumber, year, monthName } = getMonthInfo(monthAbbr, currentYear)
+    const daysInMonth = getDaysInMonth(monthNumber, currentYear)
+    
+    console.log(`Using Excel month: ${monthAbbr}, Excel year: ${excelYear}, Current year: ${currentYear}`) // Debug log
     
     // Skip header row, start from row 1
     for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
@@ -44,18 +168,21 @@ export default function Home() {
       const district = row[1] || ''
       
       // Process each date column (starting from column E = index 4)
-      for (let colIndex = 4; colIndex < row.length && colIndex < 35; colIndex++) { // 31 days max
+      const maxColumns = 4 + daysInMonth // E + number of days in month
+      for (let colIndex = 4; colIndex < row.length && colIndex < maxColumns; colIndex++) {
         const value = row[colIndex]
         if (!value || value === 0) continue
         
-        // Calculate the date (July 2025)
+        // Calculate the date using CURRENT YEAR but same day/month from Excel
         const day = colIndex - 3 // Column E = day 1, F = day 2, etc.
-        const date = new Date(2025, 6, day) // July = month 6 (0-indexed)
-        const dayOfWeek = getDayOfWeek(date)
+        const dateInCurrentYear = new Date(currentYear, monthNumber, day)
+        const dayOfWeek = getDayOfWeek(dateInCurrentYear)
         const workingHours = getWorkingHours(dayOfWeek)
         
-        // Format date as DD.MM.YYYY
-        const formattedDate = `${day.toString().padStart(2, '0')}.07.2025`
+        // Format date as DD.MM.YYYY with CURRENT YEAR
+        const formattedDate = `${day.toString().padStart(2, '0')}.${(monthNumber + 1).toString().padStart(2, '0')}.${currentYear}`
+        
+        console.log(`Day ${day} of ${monthAbbr} ${currentYear} is a ${dayOfWeek}`) // Debug log
         
         // Clean market name (remove MM prefix)
         const cleanMarketName = marketName.replace(/^MM\s*/, '')
